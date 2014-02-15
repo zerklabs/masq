@@ -65,6 +65,7 @@ func setupPool(server string) {
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", server)
 			if err != nil {
+				log.Fatal(err)
 				return nil, err
 			}
 
@@ -72,6 +73,10 @@ func setupPool(server string) {
 		},
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
 			_, err := c.Do("PING")
+			if err != nil {
+				log.Fatal(err)
+			}
+
 			return err
 		},
 	}
@@ -83,6 +88,7 @@ func hideHandler(w http.ResponseWriter, r *http.Request) {
 
 	var duration string
 	var data string
+	expire := 24 * 3600
 	inError := false
 
 	// log the request
@@ -94,8 +100,7 @@ func hideHandler(w http.ResponseWriter, r *http.Request) {
 	// placeholder for storing data
 	premadeUrl := url.Values{}
 
-	premadeUrl.Set("k", key)
-	premadeUrl.Add("d", duration)
+	premadeUrl.Set("key", key)
 
 	if err := r.ParseForm(); err != nil {
 		log.Fatal(err)
@@ -108,9 +113,37 @@ func hideHandler(w http.ResponseWriter, r *http.Request) {
 	data = r.Form.Get("data")
 
 	// if duration is not set, return a bad request
-	if len(data) == 0 || len(duration) == 0 {
-		handleError(w, "Missing Input (data, duration)", 400)
+	if len(data) == 0 {
+		handleError(w, "Missing Input (data)", 400)
 
+		inError = true
+	}
+
+	switch duration {
+	case "24":
+		expire = 24 * 3600
+		break
+	case "48":
+		expire = 48 * 3600
+		break
+	case "72":
+		expire = 72 * 3600
+		break
+	case "1w":
+		expire = 168 * 3600
+	}
+
+	conn := pool.Get()
+	defer conn.Close()
+
+	conn.Send("SET", key, data)
+	conn.Send("EXPIRE", key, expire)
+	conn.Flush()
+	_, err := conn.Receive()
+
+	if err != nil {
+		log.Fatal(err)
+		handleError(w, "Failed to retrieve value from Redis", 500)
 		inError = true
 	}
 
@@ -152,6 +185,17 @@ func showHandler(w http.ResponseWriter, r *http.Request) {
 		inError = true
 	}
 
+	conn := pool.Get()
+	defer conn.Close()
+
+	data, err := redis.String(conn.Do("GET", key))
+
+	if err != nil {
+		log.Fatal(err)
+		handleError(w, "Failed to retrieve value from Redis", 500)
+		inError = true
+	}
+
 	if !inError {
 		message := &ShowMessage{
 			Value: data,
@@ -175,6 +219,7 @@ func passwordsHandler(w http.ResponseWriter, r *http.Request) {
 	r2 := mrand.Intn(80000)
 
 	conn := pool.Get()
+	defer conn.Close()
 
 	// get first word of password
 	w1, err := redis.Strings(conn.Do("ZRANGE", "masq-dev:dictionary", r1, r1))
