@@ -1,39 +1,17 @@
 package main
 
 import (
-	"crypto/rand"
-	"crypto/sha1"
-	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/cabrel/auburn"
 	"github.com/garyburd/redigo/redis"
 	"log"
 	mrand "math/rand"
-	"net/http"
 	"net/url"
 	"runtime"
 	"strings"
 	"time"
 )
-
-type HiddenMessage struct {
-	Key      string `json:"key"`
-	Url      string `json:"url"`
-	Duration string `json:"duration"`
-}
-
-type ShowMessage struct {
-	Value string `json:"value"`
-}
-
-type PasswordMessage struct {
-	Password string `json:"password"`
-}
-
-type ErrorMessage struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
 
 var pool *redis.Pool
 var redisServer = flag.String("host", "127.0.0.1", "Redis Server")
@@ -51,13 +29,15 @@ func main() {
 
 	setupPool(redisUri)
 
-	http.HandleFunc("/hide", hideHandler)
-	http.HandleFunc("/show", showHandler)
-	http.HandleFunc("/passwords", passwordsHandler)
-	log.Printf("[Startup] Listening on: %d, Redis URI: %s", *listenOn, redisUri)
-	http.ListenAndServe(fmt.Sprintf(":%d", *listenOn), nil)
+	server := &auburn.AuburnHttpServer{HttpPort: *listenOn}
+
+	server.Handle("/hide", hideHandler)
+	server.Handle("/show", showHandler)
+	server.Handle("/passwords", passwordsHandler)
+	server.Start()
 }
 
+//
 func setupPool(server string) {
 	pool = &redis.Pool{
 		MaxIdle:     3,
@@ -82,41 +62,31 @@ func setupPool(server string) {
 	}
 }
 
-func hideHandler(w http.ResponseWriter, r *http.Request) {
-	// set the contet type of the response to application/javascript
-	w.Header().Set("Content-Type", "application/javascript")
-
-	var duration string
-	var data string
+//
+func hideHandler(req *auburn.AuburnHttpRequest) {
 	expire := 24 * 3600
-	inError := false
-
-	// log the request
-	logRequest(r)
 
 	// generate a random key
-	key := genRandomKey()
+	key := auburn.genRandomKey()
 
 	// placeholder for storing data
 	premadeUrl := url.Values{}
-
 	premadeUrl.Set("key", key)
 
-	if err := r.ParseForm(); err != nil {
-		log.Fatal(err)
-		handleError(w, "Failed to parse submit data", 400)
+	duration, err := req.GetValue("duration")
 
-		inError = true
+	if err != nil {
+		req.Error("Failed to get `duration` from Form", 400)
 	}
 
-	duration = r.Form.Get("duration")
-	data = r.Form.Get("data")
+	data, err := req.GetValue("data")
 
-	// if duration is not set, return a bad request
+	if err != nil {
+		req.Error("Failed to get `data` from Form", 400)
+	}
+
 	if len(data) == 0 {
-		handleError(w, "Missing Input (data)", 400)
-
-		inError = true
+		req.Error("Missing `data` value", 400)
 	}
 
 	switch duration {
@@ -139,50 +109,24 @@ func hideHandler(w http.ResponseWriter, r *http.Request) {
 	conn.Send("SET", key, data)
 	conn.Send("EXPIRE", key, expire)
 	conn.Flush()
-	_, err := conn.Receive()
 
-	if err != nil {
-		log.Fatal(err)
-		handleError(w, "Failed to retrieve value from Redis", 500)
-		inError = true
-	}
-
-	if !inError {
-		message := &HiddenMessage{
-			Key:      key,
-			Url:      fmt.Sprintf("%s/show?%s", *responseUrl, premadeUrl.Encode()),
-			Duration: duration,
-		}
-
-		json.NewEncoder(w).Encode(message)
-	}
+	req.Respond(struct {
+		Key      string `json:"key"`
+		Url      string `json:"url"`
+		Duration string `json:"duration"`
+	}{
+		Key:      key,
+		Url:      fmt.Sprintf("%s/show?%s", *responseUrl, premadeUrl.Encode()),
+		Duration: duration,
+	})
 }
 
-func showHandler(w http.ResponseWriter, r *http.Request) {
-	// set the contet type of the response to application/javascript
-	w.Header().Set("Content-Type", "application/javascript")
+//
+func showHandler(req *auburn.AuburnHttpRequest) {
+	key, err := req.GetValue("key")
 
-	var key string
-	var data string
-	inError := false
-
-	// log the request
-	logRequest(r)
-
-	if err := r.ParseForm(); err != nil {
-		log.Fatal(err)
-		handleError(w, "Failed to parse submit data", 400)
-
-		inError = true
-	}
-
-	key = r.Form.Get("key")
-
-	// if duration is not set, return a bad request
-	if len(key) == 0 {
-		handleError(w, "Missing Input (key)", 400)
-
-		inError = true
+	if err != nil {
+		req.Error("Failed to get `key` from Form", 400)
 	}
 
 	conn := pool.Get()
@@ -191,29 +135,18 @@ func showHandler(w http.ResponseWriter, r *http.Request) {
 	data, err := redis.String(conn.Do("GET", key))
 
 	if err != nil {
-		log.Fatal(err)
-		handleError(w, "Failed to retrieve value from Redis", 500)
-		inError = true
+		req.Error("Failed to retrieve value from Redis", 500)
 	}
 
-	if !inError {
-		message := &ShowMessage{
-			Value: data,
-		}
-
-		json.NewEncoder(w).Encode(message)
-	}
+	req.Respond(struct {
+		Value string `json:"value"`
+	}{
+		Value: data,
+	})
 }
 
-/**
- *  masq-dev:dictionary is a zset
- */
-func passwordsHandler(w http.ResponseWriter, r *http.Request) {
-	// set the contet type of the response to application/javascript
-	w.Header().Set("Content-Type", "application/javascript")
-
-	inError := false
-
+// masq-dev:dictionary is a zset
+func passwordsHandler(req *auburn.AuburnHttpRequest) {
 	mrand.Seed(time.Now().UTC().UnixNano())
 	r1 := mrand.Intn(80000)
 	r2 := mrand.Intn(80000)
@@ -225,56 +158,21 @@ func passwordsHandler(w http.ResponseWriter, r *http.Request) {
 	w1, err := redis.Strings(conn.Do("ZRANGE", "masq-dev:dictionary", r1, r1))
 
 	if err != nil {
-		log.Fatal(err)
-		handleError(w, "Failed to retrieve value from Redis", 500)
-		inError = true
+		req.Error("Failed to retrieve value from Redis", 500)
 	}
 
 	// get second word of password
 	w2, err := redis.Strings(conn.Do("ZRANGE", "masq-dev:dictionary", r2, r2))
 
 	if err != nil {
-		log.Fatal(err)
-		handleError(w, "Failed to retrieve value from Redis", 500)
-		inError = true
+		req.Error("Failed to retrieve value from Redis", 500)
 	}
 
 	randDigit := mrand.Intn(20000)
 
-	// log the request
-	logRequest(r)
-
-	if !inError {
-		message := &PasswordMessage{
-			Password: fmt.Sprintf("%s%s%d", strings.Title(w1[0]), strings.Title(w2[0]), randDigit),
-		}
-
-		json.NewEncoder(w).Encode(message)
-	}
-}
-
-func logRequest(r *http.Request) {
-	log.Printf("[Request] %s %s - %s", r.Method, r.RequestURI, r.RemoteAddr)
-}
-
-func genRandomKey() string {
-	c := 20
-	b := make([]byte, c)
-	_, err := rand.Read(b)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	hash := sha1.New()
-
-	hash.Write(b)
-
-	return fmt.Sprintf("%x", hash.Sum(nil))
-}
-
-func handleError(w http.ResponseWriter, message string, code int) {
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(&ErrorMessage{Code: code, Message: message})
-
-	log.Printf("[Error in Request] %s", message)
+	req.Respond(struct {
+		Password string `json:"password"`
+	}{
+		Password: fmt.Sprintf("%s%s%d", strings.Title(w1[0]), strings.Title(w2[0]), randDigit),
+	})
 }
