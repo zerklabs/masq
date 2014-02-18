@@ -17,7 +17,21 @@ var pool *redis.Pool
 var redisServer = flag.String("host", "127.0.0.1", "Redis Server")
 var redisServerPort = flag.Int("port", 6379, "Redis Server Port")
 var responseUrl = flag.String("url", "https://passwords.cobhamna.com", "Server Response URL")
+var redisKeyPrefix = flag.String("prefix", "masq-prod", "Key prefix in Redis for Dictionary")
 var listenOn = flag.Int("listen", 8080, "Port to run the webserver on")
+
+// predefined string -> int (as seconds) durations
+var durations = map[string]int{
+	"5m":  5 * 60,
+	"10m": 10 * 60,
+	"15m": 15 * 60,
+	"30m": 30 * 60,
+	"1h":  3600,
+	"24h": 24 * 3600,
+	"48h": 48 * 3600,
+	"72h": 72 * 3600,
+	"1w":  168 * 3600,
+}
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -64,8 +78,6 @@ func setupPool(server string) {
 
 //
 func hideHandler(req *auburn.AuburnHttpRequest) {
-	expire := 24 * 3600
-
 	// generate a random key
 	key := auburn.GenRandomKey()
 
@@ -79,6 +91,10 @@ func hideHandler(req *auburn.AuburnHttpRequest) {
 		req.Error("Failed to get `duration` from Form", 400)
 	}
 
+	if len(duration) == 0 {
+		duration = "24h"
+	}
+
 	data, err := req.GetValue("data")
 
 	if err != nil {
@@ -89,25 +105,11 @@ func hideHandler(req *auburn.AuburnHttpRequest) {
 		req.Error("Missing `data` value", 400)
 	}
 
-	switch duration {
-	case "24":
-		expire = 24 * 3600
-		break
-	case "48":
-		expire = 48 * 3600
-		break
-	case "72":
-		expire = 72 * 3600
-		break
-	case "1w":
-		expire = 168 * 3600
-	}
-
 	conn := pool.Get()
 	defer conn.Close()
 
 	conn.Send("SET", key, data)
-	conn.Send("EXPIRE", key, expire)
+	conn.Send("EXPIRE", key, durations[duration])
 	conn.Flush()
 
 	req.Respond(struct {
@@ -155,17 +157,21 @@ func passwordsHandler(req *auburn.AuburnHttpRequest) {
 	defer conn.Close()
 
 	// get first word of password
-	w1, err := redis.Strings(conn.Do("ZRANGE", "masq-dev:dictionary", r1, r1))
+	w1, err := redis.Strings(conn.Do("ZRANGE", fmt.Sprintf("%s:dictionary", *redisKeyPrefix), r1, r1))
 
 	if err != nil {
 		req.Error("Failed to retrieve value from Redis", 500)
 	}
 
 	// get second word of password
-	w2, err := redis.Strings(conn.Do("ZRANGE", "masq-dev:dictionary", r2, r2))
+	w2, err := redis.Strings(conn.Do("ZRANGE", fmt.Sprintf("%s:dictionary", *redisKeyPrefix), r2, r2))
 
 	if err != nil {
 		req.Error("Failed to retrieve value from Redis", 500)
+	}
+
+	if len(w1) == 0 || len(w2) == 0 {
+		req.Error("Failed to find value in Redis list", 404)
 	}
 
 	randDigit := mrand.Intn(20000)
