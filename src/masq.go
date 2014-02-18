@@ -67,7 +67,7 @@ func hideHandler(req *auburn.AuburnHttpRequest) {
 	expire := 24 * 3600
 
 	// generate a random key
-	key := auburn.genRandomKey()
+	key := auburn.GenRandomKey()
 
 	// placeholder for storing data
 	premadeUrl := url.Values{}
