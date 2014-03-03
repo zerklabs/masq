@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/cabrel/auburn"
 	"github.com/garyburd/redigo/redis"
-	"log"
 	mrand "math/rand"
 	"net/url"
 	"runtime"
@@ -13,26 +12,29 @@ import (
 	"time"
 )
 
-var pool *redis.Pool
-var redisServer = flag.String("redisip", "127.0.0.1", "Redis Server")
-var redisServerPort = flag.Int("redisport", 6379, "Redis Server Port")
-var responseUrl = flag.String("url", "https://passwords.cobhamna.com", "Server Response URL")
-var redisKeyPrefix = flag.String("prefix", "masq-prod", "Key prefix in Redis for Dictionary")
-var listenIP = flag.String("host", "127.0.0.1", "Port to run the webserver on")
-var listenOn = flag.Int("listen", 8080, "Port to run the webserver on")
+var (
+	redisServer     = flag.String("redisip", "127.0.0.1", "Redis Server")
+	redisServerPort = flag.Int("redisport", 6379, "Redis Server Port")
+	responseUrl     = flag.String("url", "https://passwords.cobhamna.com", "Server Response URL")
+	redisKeyPrefix  = flag.String("prefix", "masq-prod", "Key prefix in Redis for Dictionary")
+	listenIP        = flag.String("host", "127.0.0.1", "Port to run the webserver on")
+	listenOn        = flag.Int("listen", 8080, "Port to run the webserver on")
 
-// predefined string -> int (as seconds) durations
-var durations = map[string]int{
-	"5m":  5 * 60,
-	"10m": 10 * 60,
-	"15m": 15 * 60,
-	"30m": 30 * 60,
-	"1h":  3600,
-	"24h": 24 * 3600,
-	"48h": 48 * 3600,
-	"72h": 72 * 3600,
-	"1w":  168 * 3600,
-}
+	redisUri string
+
+	// predefined string -> int (as seconds) durations
+	durations = map[string]int{
+		"5m":  5 * 60,
+		"10m": 10 * 60,
+		"15m": 15 * 60,
+		"30m": 30 * 60,
+		"1h":  3600,
+		"24h": 24 * 3600,
+		"48h": 48 * 3600,
+		"72h": 72 * 3600,
+		"1w":  168 * 3600,
+	}
+)
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -40,9 +42,7 @@ func main() {
 	// bind the command line flags
 	flag.Parse()
 
-	redisUri := fmt.Sprintf("%s:%d", *redisServer, *redisServerPort)
-
-	setupPool(redisUri)
+	redisUri = fmt.Sprintf("%s:%d", *redisServer, *redisServerPort)
 
 	server := &auburn.AuburnHttpServer{HttpPort: *listenOn, HttpIp: *listenIP}
 
@@ -53,32 +53,15 @@ func main() {
 }
 
 //
-func setupPool(server string) {
-	pool = &redis.Pool{
-		MaxIdle:     3,
-		IdleTimeout: 240 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", server)
-			if err != nil {
-				log.Fatal(err)
-				return nil, err
-			}
-
-			return c, err
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			return err
-		},
-	}
-}
-
-//
 func hideHandler(req *auburn.AuburnHttpRequest) {
+	conn, err := redis.Dial("tcp", redisUri)
+
+	if err != nil {
+		req.Error("Failed to connect to redis", 500)
+	}
+
+	defer conn.Close()
+
 	// generate a random key
 	key := auburn.GenRandomKey()
 
@@ -106,9 +89,6 @@ func hideHandler(req *auburn.AuburnHttpRequest) {
 		req.Error("Missing `data` value", 400)
 	}
 
-	conn := pool.Get()
-	defer conn.Close()
-
 	conn.Send("SET", key, data)
 	conn.Send("EXPIRE", key, durations[duration])
 	conn.Flush()
@@ -126,14 +106,19 @@ func hideHandler(req *auburn.AuburnHttpRequest) {
 
 //
 func showHandler(req *auburn.AuburnHttpRequest) {
+	conn, err := redis.Dial("tcp", redisUri)
+
+	if err != nil {
+		req.Error("Failed to connect to redis", 500)
+	}
+
+	defer conn.Close()
+
 	key, err := req.GetValue("key")
 
 	if err != nil {
 		req.Error("Failed to get `key` from Form", 400)
 	}
-
-	conn := pool.Get()
-	defer conn.Close()
 
 	data, err := redis.String(conn.Do("GET", key))
 
@@ -150,12 +135,17 @@ func showHandler(req *auburn.AuburnHttpRequest) {
 
 // masq-dev:dictionary is a zset
 func passwordsHandler(req *auburn.AuburnHttpRequest) {
+	conn, err := redis.Dial("tcp", redisUri)
+
+	if err != nil {
+		req.Error("Failed to connect to redis", 500)
+	}
+
+	defer conn.Close()
+
 	mrand.Seed(time.Now().UTC().UnixNano())
 	r1 := mrand.Intn(80000)
 	r2 := mrand.Intn(80000)
-
-	conn := pool.Get()
-	defer conn.Close()
 
 	// get first word of password
 	w1, err := redis.Strings(conn.Do("ZRANGE", fmt.Sprintf("%s:dictionary", *redisKeyPrefix), r1, r1))
