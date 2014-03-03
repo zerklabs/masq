@@ -126,6 +126,7 @@ func showHandler(req *auburn.AuburnHttpRequest) {
 	data, err := redis.String(conn.Do("GET", key))
 
 	if err != nil {
+		log.Print(err)
 		req.Error("Failed to retrieve value from Redis", 500)
 	}
 
