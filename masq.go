@@ -14,10 +14,11 @@ import (
 )
 
 var pool *redis.Pool
-var redisServer = flag.String("host", "127.0.0.1", "Redis Server")
-var redisServerPort = flag.Int("port", 6379, "Redis Server Port")
+var redisServer = flag.String("redisip", "127.0.0.1", "Redis Server")
+var redisServerPort = flag.Int("redisport", 6379, "Redis Server Port")
 var responseUrl = flag.String("url", "https://passwords.cobhamna.com", "Server Response URL")
 var redisKeyPrefix = flag.String("prefix", "masq-prod", "Key prefix in Redis for Dictionary")
+var listenIP = flag.String("host", "127.0.0.1", "Port to run the webserver on")
 var listenOn = flag.Int("listen", 8080, "Port to run the webserver on")
 
 // predefined string -> int (as seconds) durations
@@ -43,7 +44,7 @@ func main() {
 
 	setupPool(redisUri)
 
-	server := &auburn.AuburnHttpServer{HttpPort: *listenOn}
+	server := &auburn.AuburnHttpServer{HttpPort: *listenOn, HttpIp: *listenIP}
 
 	server.Handle("/2/hide", hideHandler)
 	server.Handle("/2/show", showHandler)
