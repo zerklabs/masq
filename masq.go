@@ -3,8 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/cabrel/auburn"
 	"github.com/garyburd/redigo/redis"
+	"github.com/zerklabs/auburn"
+	"log"
 	mrand "math/rand"
 	"net/url"
 	"runtime"
@@ -72,6 +73,7 @@ func hideHandler(req *auburn.AuburnHttpRequest) {
 	duration, err := req.GetValue("duration")
 
 	if err != nil {
+		log.Print(err)
 		req.Error("Failed to get `duration` from Form", 400)
 	}
 
@@ -82,6 +84,7 @@ func hideHandler(req *auburn.AuburnHttpRequest) {
 	data, err := req.GetValue("data")
 
 	if err != nil {
+		log.Print(err)
 		req.Error("Failed to get `data` from Form", 400)
 	}
 
