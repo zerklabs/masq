@@ -45,9 +45,9 @@ func main() {
 
 	server := &auburn.AuburnHttpServer{HttpPort: *listenOn}
 
-	server.Handle("/hide", hideHandler)
-	server.Handle("/show", showHandler)
-	server.Handle("/passwords", passwordsHandler)
+	server.Handle("/2/hide", hideHandler)
+	server.Handle("/2/show", showHandler)
+	server.Handle("/2/passwords", passwordsHandler)
 	server.Start()
 }
 
