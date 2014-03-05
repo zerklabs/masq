@@ -17,7 +17,7 @@ var (
 	redisServer     = flag.String("redisip", "127.0.0.1", "Redis Server")
 	redisServerPort = flag.Int("redisport", 6379, "Redis Server Port")
 	responseUrl     = flag.String("url", "https://passwords.cobhamna.com", "Server Response URL")
-	redisKeyPrefix  = flag.String("prefix", "masq-prod", "Key prefix in Redis for Dictionary")
+	redisKeyPrefix  = flag.String("prefix", "masq", "Key prefix in Redis")
 	listenIP        = flag.String("host", "127.0.0.1", "Port to run the webserver on")
 	listenOn        = flag.Int("listen", 8080, "Port to run the webserver on")
 
@@ -45,7 +45,7 @@ func main() {
 
 	redisUri = fmt.Sprintf("%s:%d", *redisServer, *redisServerPort)
 
-	server := &auburn.AuburnHttpServer{HttpPort: *listenOn, HttpIp: *listenIP}
+	server := auburn.New(*listenIP, *listenOn, "", "")
 
 	server.Handle("/2/hide", hideHandler)
 	server.Handle("/2/show", showHandler)
@@ -92,11 +92,13 @@ func hideHandler(req *auburn.AuburnHttpRequest) {
 		req.Error("Missing `data` value", 400)
 	}
 
-	conn.Send("SET", key, data)
-	conn.Send("EXPIRE", key, durations[duration])
+	uniqueKey := fmt.Sprintf("%s:%s", *redisKeyPrefix, key)
+
+	conn.Send("SET", uniqueKey, data)
+	conn.Send("EXPIRE", uniqueKey, durations[duration])
 	conn.Flush()
 
-	req.Respond(struct {
+	req.RespondWithJSON(struct {
 		Key      string `json:"key"`
 		Url      string `json:"url"`
 		Duration string `json:"duration"`
@@ -123,14 +125,19 @@ func showHandler(req *auburn.AuburnHttpRequest) {
 		req.Error("Failed to get `key` from Form", 400)
 	}
 
-	data, err := redis.String(conn.Do("GET", key))
+	if key == "dictionary" {
+		req.Error("Invalid Request", 401)
+	}
+
+	uniqueKey := fmt.Sprintf("%s:%s", *redisKeyPrefix, key)
+	data, err := redis.String(conn.Do("GET", uniqueKey))
 
 	if err != nil {
 		log.Print(err)
 		req.Error("Failed to retrieve value from Redis", 500)
 	}
 
-	req.Respond(struct {
+	req.RespondWithJSON(struct {
 		Value string `json:"value"`
 	}{
 		Value: data,
@@ -147,19 +154,21 @@ func passwordsHandler(req *auburn.AuburnHttpRequest) {
 
 	defer conn.Close()
 
+	dictionaryKey := fmt.Sprintf("%s:dictionary", *redisKeyPrefix)
+
 	mrand.Seed(time.Now().UTC().UnixNano())
 	r1 := mrand.Intn(80000)
 	r2 := mrand.Intn(80000)
 
 	// get first word of password
-	w1, err := redis.Strings(conn.Do("ZRANGE", fmt.Sprintf("%s:dictionary", *redisKeyPrefix), r1, r1))
+	w1, err := redis.Strings(conn.Do("ZRANGE", dictionaryKey, r1, r1))
 
 	if err != nil {
 		req.Error("Failed to retrieve value from Redis", 500)
 	}
 
 	// get second word of password
-	w2, err := redis.Strings(conn.Do("ZRANGE", fmt.Sprintf("%s:dictionary", *redisKeyPrefix), r2, r2))
+	w2, err := redis.Strings(conn.Do("ZRANGE", dictionaryKey, r2, r2))
 
 	if err != nil {
 		req.Error("Failed to retrieve value from Redis", 500)
@@ -171,7 +180,7 @@ func passwordsHandler(req *auburn.AuburnHttpRequest) {
 
 	randDigit := mrand.Intn(20000)
 
-	req.Respond(struct {
+	req.RespondWithJSON(struct {
 		Password string `json:"password"`
 	}{
 		Password: fmt.Sprintf("%s%s%d", strings.Title(w1[0]), strings.Title(w2[0]), randDigit),
