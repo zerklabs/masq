@@ -144,7 +144,7 @@ func showHandler(req *auburn.AuburnHttpRequest) {
 	})
 }
 
-// masq-dev:dictionary is a zset
+// <prefix>:dictionary is a zset
 func passwordsHandler(req *auburn.AuburnHttpRequest) {
 	conn, err := redis.Dial("tcp", redisUri)
 
