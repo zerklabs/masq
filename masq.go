@@ -25,15 +25,16 @@ var (
 
 	// predefined string -> int (as seconds) durations
 	durations = map[string]int{
-		"5m":  5 * 60,
-		"10m": 10 * 60,
-		"15m": 15 * 60,
-		"30m": 30 * 60,
-		"1h":  3600,
-		"24h": 24 * 3600,
-		"48h": 48 * 3600,
-		"72h": 72 * 3600,
-		"1w":  168 * 3600,
+		"none": 0,
+		"5m":   5 * 60,
+		"10m":  10 * 60,
+		"15m":  15 * 60,
+		"30m":  30 * 60,
+		"1h":   3600,
+		"24h":  24 * 3600,
+		"48h":  48 * 3600,
+		"72h":  72 * 3600,
+		"1w":   168 * 3600,
 	}
 )
 
@@ -95,7 +96,11 @@ func hideHandler(req *auburn.AuburnHttpRequest) {
 	uniqueKey := fmt.Sprintf("%s:%s", *redisKeyPrefix, key)
 
 	conn.Send("SET", uniqueKey, data)
-	conn.Send("EXPIRE", uniqueKey, durations[duration])
+
+	// include consideration for no duration
+	if durations[duration] > 0 {
+		conn.Send("EXPIRE", uniqueKey, durations[duration])
+	}
 	conn.Flush()
 
 	req.RespondWithJSON(struct {
