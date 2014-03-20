@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
-	"github.com/zerklabs/auburn"
+	a "github.com/zerklabs/auburn"
 	"log"
 	mrand "math/rand"
 	"net/url"
@@ -46,16 +46,16 @@ func main() {
 
 	redisUri = fmt.Sprintf("%s:%d", *redisServer, *redisServerPort)
 
-	server := auburn.New(*listenIP, *listenOn, "", "")
+	server := a.New(*listenIP, *listenOn, "", "", false)
 
-	server.Handle("/2/hide", hideHandler)
-	server.Handle("/2/show", showHandler)
-	server.Handle("/2/passwords", passwordsHandler)
+	server.AddRoute("/2/hide", hideHandler)
+	server.AddRoute("/2/show", showHandler)
+	server.AddRoute("/2/passwords", passwordsHandler)
 	server.Start()
 }
 
 //
-func hideHandler(req *auburn.AuburnHttpRequest) {
+func hideHandler(req *a.HttpTransaction) {
 	conn, err := redis.Dial("tcp", redisUri)
 
 	if err != nil {
@@ -65,29 +65,19 @@ func hideHandler(req *auburn.AuburnHttpRequest) {
 	defer conn.Close()
 
 	// generate a random key
-	key := auburn.GenRandomKey()
+	key := a.GenRandomKey()
 
 	// placeholder for storing data
 	premadeUrl := url.Values{}
 	premadeUrl.Set("key", key)
 
-	duration, err := req.GetValue("duration")
-
-	if err != nil {
-		log.Print(err)
-		req.Error("Failed to get `duration` from Form", 400)
-	}
+	duration := req.Query("duration")
 
 	if len(duration) == 0 {
 		duration = "24h"
 	}
 
-	data, err := req.GetValue("data")
-
-	if err != nil {
-		log.Print(err)
-		req.Error("Failed to get `data` from Form", 400)
-	}
+	data := req.Query("data")
 
 	if len(data) == 0 {
 		req.Error("Missing `data` value", 400)
@@ -115,7 +105,7 @@ func hideHandler(req *auburn.AuburnHttpRequest) {
 }
 
 //
-func showHandler(req *auburn.AuburnHttpRequest) {
+func showHandler(req *a.HttpTransaction) {
 	conn, err := redis.Dial("tcp", redisUri)
 
 	if err != nil {
@@ -124,9 +114,9 @@ func showHandler(req *auburn.AuburnHttpRequest) {
 
 	defer conn.Close()
 
-	key, err := req.GetValue("key")
+	key := req.Query("key")
 
-	if err != nil {
+	if len(key) == 0 {
 		req.Error("Failed to get `key` from Form", 400)
 	}
 
@@ -150,7 +140,7 @@ func showHandler(req *auburn.AuburnHttpRequest) {
 }
 
 // <prefix>:dictionary is a zset
-func passwordsHandler(req *auburn.AuburnHttpRequest) {
+func passwordsHandler(req *a.HttpTransaction) {
 	conn, err := redis.Dial("tcp", redisUri)
 
 	if err != nil {
