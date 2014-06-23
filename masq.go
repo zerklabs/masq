@@ -2,27 +2,12 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"github.com/garyburd/redigo/redis"
-	a "github.com/zerklabs/auburn"
-	"log"
-	mrand "math/rand"
-	"net/url"
-	"runtime"
-	"strings"
+	a "github.com/zerklabs/auburn-http"
 	"time"
 )
 
 var (
-	redisServer     = flag.String("redisip", "127.0.0.1", "Redis Server")
-	redisServerPort = flag.Int("redisport", 6379, "Redis Server Port")
-	responseUrl     = flag.String("url", "https://passwords.cobhamna.com", "Server Response URL")
-	redisKeyPrefix  = flag.String("prefix", "masq", "Key prefix in Redis")
-	listenIP        = flag.String("host", "127.0.0.1", "Port to run the webserver on")
-	listenOn        = flag.Int("listen", 8080, "Port to run the webserver on")
-
-	redisUri string
-
 	// predefined string -> int (as seconds) durations
 	durations = map[string]int{
 		"none": 0,
@@ -36,145 +21,53 @@ var (
 		"72h":  72 * 3600,
 		"1w":   168 * 3600,
 	}
+
+	pool *redis.Pool
+
+	responseUrl    = flag.String("url", "https://passwords.cobhamna.com", "Server Response URL")
+	redisKeyPrefix = flag.String("prefix", "masq", "Key prefix in Redis")
 )
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	var (
+		redisAddress = flag.String("redis-address", "127.0.0.1:6379", "Redis Server")
+		httpAddress  = flag.String("http-address", "127.0.0.1:8080", "IP:PORT to run the webserver on")
+	)
 
 	// bind the command line flags
 	flag.Parse()
 
-	redisUri = fmt.Sprintf("%s:%d", *redisServer, *redisServerPort)
+	pool = newPool(*redisAddress)
+	server := a.New(*httpAddress)
 
-	server := a.New(*listenIP, *listenOn, "", "", false)
+	server.AddRouteForMethod("/2/hide", a.POST, hideHandler)
+	server.AddRouteForMethod("/hide", a.POST, hideHandler)
 
-	server.AddRoute("/2/hide", hideHandler)
-	server.AddRoute("/2/show", showHandler)
-	server.AddRoute("/2/passwords", passwordsHandler)
+	server.AddRouteForMethod("/2/show", a.GET, showHandler)
+	server.AddRouteForMethod("/show", a.GET, showHandler)
 
-	server.AddRoute("/hide", hideHandler)
-	server.AddRoute("/show", showHandler)
-	server.AddRoute("/passwords", passwordsHandler)
+	server.AddRouteForMethod("/2/passwords", a.GET, passwordsHandler)
+	server.AddRouteForMethod("/passwords", a.GET, passwordsHandler)
+
 	server.Start()
 }
 
-//
-func hideHandler(req *a.HttpTransaction) {
-	conn, err := redis.Dial("tcp", redisUri)
+func newPool(server string) *redis.Pool {
+	return &redis.Pool{
+		MaxIdle:     5,
+		IdleTimeout: 240 * time.Second,
+		Dial: func() (redis.Conn, error) {
+			c, err := redis.Dial("tcp", server)
 
-	if err != nil {
-		req.Error("Failed to connect to redis", 500)
+			if err != nil {
+				return nil, err
+			}
+
+			return c, err
+		},
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
 	}
-
-	defer conn.Close()
-
-	// generate a random key
-	key := a.GenRandomKey()
-
-	// placeholder for storing data
-	premadeUrl := url.Values{}
-	premadeUrl.Set("key", key)
-
-	duration := req.Query("duration")
-
-	if len(duration) == 0 {
-		duration = "24h"
-	}
-
-	data := req.Query("data")
-
-	if len(data) == 0 {
-		req.Error("Missing `data` value", 400)
-	}
-
-	uniqueKey := fmt.Sprintf("%s:%s", *redisKeyPrefix, key)
-
-	conn.Send("SET", uniqueKey, data)
-
-	// include consideration for no duration
-	if durations[duration] > 0 {
-		conn.Send("EXPIRE", uniqueKey, durations[duration])
-	}
-	conn.Flush()
-
-	req.RespondWithJSON(struct {
-		Key      string `json:"key"`
-		Url      string `json:"url"`
-		Duration string `json:"duration"`
-	}{
-		Key:      key,
-		Url:      fmt.Sprintf("%s/show?%s", *responseUrl, premadeUrl.Encode()),
-		Duration: duration,
-	})
-}
-
-//
-func showHandler(req *a.HttpTransaction) {
-	conn, err := redis.Dial("tcp", redisUri)
-
-	if err != nil {
-		req.Error("Failed to connect to redis", 500)
-	}
-
-	defer conn.Close()
-
-	key := req.Query("key")
-
-	if len(key) == 0 {
-		req.Error("Failed to get `key` from Form", 400)
-	}
-
-	if key == "dictionary" {
-		req.Error("Invalid Request", 401)
-	}
-
-	uniqueKey := fmt.Sprintf("%s:%s", *redisKeyPrefix, key)
-	data, err := redis.String(conn.Do("GET", uniqueKey))
-
-	if err != nil {
-		log.Print(err)
-		req.Error("Failed to retrieve value from Redis", 500)
-	}
-
-	req.RespondWithJSON(struct {
-		Value string `json:"value"`
-	}{
-		Value: data,
-	})
-}
-
-// <prefix>:dictionary is a zset
-func passwordsHandler(req *a.HttpTransaction) {
-	conn, err := redis.Dial("tcp", redisUri)
-
-	// additionalCharacters := []string{"#", "!", "@", "^"}
-
-	if err != nil {
-		req.Error("Failed to connect to redis", 500)
-	}
-
-	defer conn.Close()
-
-	dictionaryKey := fmt.Sprintf("%s:dictionary", *redisKeyPrefix)
-
-	mrand.Seed(time.Now().UTC().UnixNano())
-
-	words, err := redis.Strings(conn.Do("SRANDMEMBER", dictionaryKey, 2))
-
-	if err != nil {
-		req.Error("Failed to retrieve value from Redis", 500)
-	}
-
-	if len(words) == 0 {
-		req.Error("Failed to find value in Redis list", 404)
-	}
-
-	randDigit := mrand.Intn(20000)
-	// randChar := additionalCharacters[mrand.Intn(4)]
-
-	req.RespondWithJSON(struct {
-		Password string `json:"password"`
-	}{
-		Password: fmt.Sprintf("%s%s%d", strings.Title(words[0]), strings.Title(words[1]), randDigit),
-	})
 }
