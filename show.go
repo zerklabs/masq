@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"log"
 
+	log "code.google.com/p/log4go"
 	"github.com/garyburd/redigo/redis"
 	a "github.com/zerklabs/auburn-http"
 )
@@ -27,7 +27,7 @@ func showHandler(req a.HttpTransaction) {
 	data, err := redis.String(conn.Do("GET", uniqueKey))
 
 	if err != nil {
-		log.Print(err)
+		log.Error(err)
 		req.Error("Failed to retrieve value from Redis", 500)
 	}
 

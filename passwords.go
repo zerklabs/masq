@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"log"
 	mrand "math/rand"
 	"strings"
 	"time"
 
+	log "code.google.com/p/log4go"
 	"github.com/garyburd/redigo/redis"
 	a "github.com/zerklabs/auburn-http"
 )
@@ -37,7 +37,7 @@ func passwordsHandler(req a.HttpTransaction) {
 		words, err := redis.Strings(conn.Do("SRANDMEMBER", dictionaryKey, 2))
 
 		if err != nil {
-			log.Println(err)
+			log.Error(err)
 			req.Error("Failed to retrieve value from Redis", 500)
 			return
 		}

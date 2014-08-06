@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	a "github.com/zerklabs/auburn-http"
 	"net/url"
+
+	a "github.com/zerklabs/auburn-http"
 )
 
 //

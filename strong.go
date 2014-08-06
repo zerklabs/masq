@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zerklabs/arrayview/string"
+	"github.com/zerklabs/fifoq/string"
 )
 
 var (
@@ -64,11 +64,11 @@ var (
 		"0",
 	}
 
-	av *arrayviewstring.ArrayViewString
+	av *fifoqstring.FifoqString
 )
 
 func generateStrongPassword(minLength int) string {
-	av = arrayviewstring.New(7)
+	av = fifoqstring.New(7)
 	var password string
 
 	mrand.Seed(time.Now().UTC().UnixNano())
@@ -89,7 +89,7 @@ func generateStrongPassword(minLength int) string {
 
 			if len(lchar) > 0 {
 				if !av.Contains(lchar) {
-					av.Add(lchar)
+					av.Push(lchar)
 					break
 				} else {
 					mrand.Seed(time.Now().UTC().UnixNano())

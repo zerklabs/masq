@@ -2,9 +2,10 @@ package main
 
 import (
 	"flag"
+	"time"
+
 	"github.com/garyburd/redigo/redis"
 	a "github.com/zerklabs/auburn-http"
-	"time"
 )
 
 var (
