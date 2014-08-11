@@ -8,7 +8,7 @@ import (
 )
 
 //
-func hideHandler(req a.HttpTransaction) {
+func hideHandler(req *a.HttpTransaction) (error, int) {
 	conn := pool.Get()
 	defer conn.Close()
 
@@ -28,8 +28,7 @@ func hideHandler(req a.HttpTransaction) {
 	data := req.Query("data")
 
 	if len(data) == 0 {
-		req.Error("Missing `data` value", 400)
-		return
+		return req.Error("Missing `data` value", 400)
 	}
 
 	uniqueKey := fmt.Sprintf("%s:%s", *redisKeyPrefix, key)
@@ -43,7 +42,7 @@ func hideHandler(req a.HttpTransaction) {
 
 	conn.Flush()
 
-	req.RespondWithJSON(struct {
+	return req.RespondWithJSON(struct {
 		Key      string `json:"key"`
 		Url      string `json:"url"`
 		Duration string `json:"duration"`

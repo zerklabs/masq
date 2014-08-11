@@ -41,6 +41,10 @@ func main() {
 	pool = newPool(*redisAddress)
 	server := a.New(*httpAddress)
 
+	server.Options.EnableLogging = true
+	server.Options.EnableCors = true
+	server.Options.EnableOptions = true
+
 	server.AddRouteForMethod("/2/hide", a.POST, hideHandler)
 	server.AddRouteForMethod("/hide", a.POST, hideHandler)
 

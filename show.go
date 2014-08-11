@@ -9,18 +9,18 @@ import (
 )
 
 //
-func showHandler(req a.HttpTransaction) {
+func showHandler(req *a.HttpTransaction) (error, int) {
 	conn := pool.Get()
 	defer conn.Close()
 
 	key := req.Query("key")
 
 	if len(key) == 0 {
-		req.Error("Failed to get `key` from Form", 400)
+		return req.Error("Failed to get `key` from Form", 400)
 	}
 
 	if key == "dictionary" {
-		req.Error("Invalid Request", 401)
+		return req.Error("Invalid Request", 400)
 	}
 
 	uniqueKey := fmt.Sprintf("%s:%s", *redisKeyPrefix, key)
@@ -28,10 +28,10 @@ func showHandler(req a.HttpTransaction) {
 
 	if err != nil {
 		log.Error(err)
-		req.Error("Failed to retrieve value from Redis", 500)
+		return req.Error("Failed to retrieve value from Redis", 500)
 	}
 
-	req.RespondWithJSON(struct {
+	return req.RespondWithJSON(struct {
 		Value string `json:"value"`
 	}{
 		Value: data,
