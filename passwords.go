@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	log "code.google.com/p/log4go"
 	"github.com/garyburd/redigo/redis"
 	a "github.com/zerklabs/auburn-http"
 )
@@ -33,7 +32,7 @@ func passwordsHandler(req *a.HttpTransaction) (error, int) {
 		words, err := redis.Strings(conn.Do("SRANDMEMBER", dictionaryKey, 2))
 
 		if err != nil {
-			log.Error(err)
+			a.Log.Error(err)
 			return req.Error("Failed to retrieve value from Redis", 500)
 		}
 
