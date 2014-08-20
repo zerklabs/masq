@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
-	a "github.com/zerklabs/auburn-http"
+	"github.com/zerklabs/auburn/http"
 )
 
 // <prefix>:dictionary is a zset
-func passwordsHandler(req *a.HttpTransaction) (error, int) {
+func passwordsHandler(req *http.HttpTransaction) (error, int) {
 	strong := req.Query("strong")
 
 	if strong == "1" || strong == "true" {
@@ -32,7 +32,7 @@ func passwordsHandler(req *a.HttpTransaction) (error, int) {
 		words, err := redis.Strings(conn.Do("SRANDMEMBER", dictionaryKey, 2))
 
 		if err != nil {
-			a.Log.Error(err)
+			http.Log.Error(err)
 			return req.Error("Failed to retrieve value from Redis", 500)
 		}
 

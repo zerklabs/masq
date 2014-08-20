@@ -4,16 +4,17 @@ import (
 	"fmt"
 	"net/url"
 
-	a "github.com/zerklabs/auburn-http"
+	"github.com/zerklabs/auburn/http"
+	"github.com/zerklabs/auburn/utils"
 )
 
 //
-func hideHandler(req *a.HttpTransaction) (error, int) {
+func hideHandler(req *http.HttpTransaction) (error, int) {
 	conn := pool.Get()
 	defer conn.Close()
 
 	// generate a random key
-	key := a.GenRandomKey()
+	key, _ := utils.GenRandomKey()
 
 	// placeholder for storing data
 	premadeUrl := url.Values{}
@@ -39,6 +40,8 @@ func hideHandler(req *a.HttpTransaction) (error, int) {
 	if durations[duration] > 0 {
 		conn.Send("EXPIRE", uniqueKey, durations[duration])
 	}
+
+	http.Log.Infof("%s expires in %v", uniqueKey, durations[duration])
 
 	conn.Flush()
 

@@ -2,10 +2,10 @@ package main
 
 import (
 	"flag"
-	"time"
 
 	"github.com/garyburd/redigo/redis"
-	a "github.com/zerklabs/auburn-http"
+	"github.com/zerklabs/auburn/http"
+	"github.com/zerklabs/auburn/redis"
 )
 
 var (
@@ -32,47 +32,29 @@ var (
 func main() {
 	var (
 		redisAddress = flag.String("redis-address", "127.0.0.1:6379", "Redis Server")
-		httpAddress  = flag.String("http-address", "127.0.0.1:8080", "IP:PORT to run the webserver on")
 	)
 
 	// bind the command line flags
 	flag.Parse()
 
-	pool = newPool(*redisAddress)
-	server := a.New(*httpAddress)
+	pool = auburnredis.NewPool(*redisAddress, "")
+	server, err := http.NewServer()
+
+	if err != nil {
+		panic(err)
+	}
 
 	server.Options.EnableLogging = true
 	server.Options.EnableCors = true
-	server.Options.EnableOptions = true
 
-	server.AddRouteForMethod("/2/hide", a.POST, hideHandler)
-	server.AddRouteForMethod("/hide", a.POST, hideHandler)
+	server.AddRouteForMethod("/2/hide", http.POST, hideHandler)
+	server.AddRouteForMethod("/hide", http.POST, hideHandler)
 
-	server.AddRouteForMethod("/2/show", a.GET, showHandler)
-	server.AddRouteForMethod("/show", a.GET, showHandler)
+	server.AddRouteForMethod("/2/show", http.GET, showHandler)
+	server.AddRouteForMethod("/show", http.GET, showHandler)
 
-	server.AddRouteForMethod("/2/passwords", a.GET, passwordsHandler)
-	server.AddRouteForMethod("/passwords", a.GET, passwordsHandler)
+	server.AddRouteForMethod("/2/passwords", http.GET, passwordsHandler)
+	server.AddRouteForMethod("/passwords", http.GET, passwordsHandler)
 
 	server.Start()
-}
-
-func newPool(server string) *redis.Pool {
-	return &redis.Pool{
-		MaxIdle:     5,
-		IdleTimeout: 240 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", server)
-
-			if err != nil {
-				return nil, err
-			}
-
-			return c, err
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-	}
 }

@@ -4,11 +4,11 @@ import (
 	"fmt"
 
 	"github.com/garyburd/redigo/redis"
-	a "github.com/zerklabs/auburn-http"
+	"github.com/zerklabs/auburn/http"
 )
 
 //
-func showHandler(req *a.HttpTransaction) (error, int) {
+func showHandler(req *http.HttpTransaction) (error, int) {
 	conn := pool.Get()
 	defer conn.Close()
 
@@ -26,7 +26,7 @@ func showHandler(req *a.HttpTransaction) (error, int) {
 	data, err := redis.String(conn.Do("GET", uniqueKey))
 
 	if err != nil {
-		a.Log.Error(err)
+		http.Log.Error(err)
 		return req.Error("Failed to retrieve value from Redis", 500)
 	}
 
