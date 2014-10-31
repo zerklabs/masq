@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/zerklabs/auburn/http"
 	"github.com/zerklabs/auburn/redis"
 )
@@ -23,29 +22,23 @@ var (
 		"1w":   168 * 3600,
 	}
 
-	pool *redis.Pool
+	cluster *auburnredis.Cluster
 
 	responseUrl    = flag.String("url", "https://passwords.cobhamna.com", "Server Response URL")
 	redisKeyPrefix = flag.String("prefix", "masq", "Key prefix in Redis")
 )
 
 func main() {
-	var (
-		redisAddress = flag.String("redis-address", "127.0.0.1:6379", "Redis Server")
-	)
-
 	// bind the command line flags
 	flag.Parse()
 
-	pool = auburnredis.NewPool(*redisAddress, "")
+	cluster = auburnredis.NewCluster("", auburnredis.RedisAddress)
 	server, err := http.NewServer()
-
 	if err != nil {
 		panic(err)
 	}
 
-	server.Options.EnableLogging = true
-	server.Options.EnableCors = true
+	server.Options.SendCacheAvoidance = true
 
 	server.AddRouteForMethod("/2/hide", http.POST, hideHandler)
 	server.AddRouteForMethod("/hide", http.POST, hideHandler)
