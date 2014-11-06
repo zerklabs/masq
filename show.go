@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"code.google.com/p/go.net/context"
@@ -15,18 +16,17 @@ func showHandler(ctx context.Context, req http.HttpTransaction) response.Respons
 	key := req.Query("key")
 
 	if len(key) == 0 {
-		return req.Error(400, "Failed to get `key` from Form")
+		return response.Error(400, errors.New("Failed to get key from Form"))
 	}
 
 	if key == "dictionary" {
-		return req.Error(400, "Invalid Request")
+		return response.Error(401, errors.New("Invalid request type"))
 	}
 
 	uniqueKey := fmt.Sprintf("%s:%s", *redisKeyPrefix, key)
 	data, err := redis.String(cluster.Do("GET", uniqueKey))
 	if err != nil {
-		http.Log.Error(err)
-		return req.Error(500, "Failed to retrieve value from Redis")
+		return response.JsonError(400, "Failed to retrieve value")
 	}
 
 	return req.Json(struct {

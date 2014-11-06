@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/zerklabs/auburn/http"
 	"github.com/zerklabs/auburn/http/response"
+	"github.com/zerklabs/auburn/log"
 	"github.com/zerklabs/auburn/utils"
 )
 
@@ -27,27 +29,28 @@ func hideHandler(ctx context.Context, req http.HttpTransaction) response.Respons
 
 	data := req.Query("data")
 	if len(data) == 0 {
-		return req.Error(400, "Missing `data` value")
+		log.Error("missing data value")
+		return response.Error(400, errors.New("Missing data value"))
 	}
 
 	uniqueKey := fmt.Sprintf("%s:%s", *redisKeyPrefix, key)
 
 	_, err := cluster.Do("SET", uniqueKey, data)
 	if err != nil {
-		http.Log.Error(err)
-		return req.Error(500, err.Error())
+		log.Error(err)
+		return response.Error(500, err)
 	}
 
 	// include consideration for no duration
 	if durations[duration] > 0 {
 		_, err := cluster.Do("EXPIRE", uniqueKey, durations[duration])
 		if err != nil {
-			http.Log.Error(err)
-			return req.Error(500, err.Error())
+			log.Error(err)
+			return response.Error(500, err)
 		}
 	}
 
-	http.Log.Infof("%s expires in %v", uniqueKey, durations[duration])
+	log.Infof("%s expires in %v", uniqueKey, durations[duration])
 
 	return req.Json(struct {
 		Key      string `json:"key"`
@@ -55,7 +58,7 @@ func hideHandler(ctx context.Context, req http.HttpTransaction) response.Respons
 		Duration string `json:"duration"`
 	}{
 		Key:      key,
-		Url:      fmt.Sprintf("%s/show?%s", *responseUrl, premadeUrl.Encode()),
+		Url:      fmt.Sprintf("%s/#/show?%s", *responseUrl, premadeUrl.Encode()),
 		Duration: duration,
 	})
 }

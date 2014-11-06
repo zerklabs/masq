@@ -26,28 +26,37 @@ var (
 
 	responseUrl    = flag.String("url", "https://passwords.cobhamna.com", "Server Response URL")
 	redisKeyPrefix = flag.String("prefix", "masq", "Key prefix in Redis")
+
+	server *http.HttpServer
 )
 
-func main() {
+func init() {
+	var err error
+
 	// bind the command line flags
 	flag.Parse()
 
 	cluster = auburnredis.NewCluster("", auburnredis.RedisAddress)
-	server, err := http.NewServer()
+	server, err = http.NewServer()
 	if err != nil {
 		panic(err)
 	}
 
 	server.Options.SendCacheAvoidance = true
+	server.Options.EnableCors = true
 
 	server.AddRouteForMethod("/2/hide", http.POST, hideHandler)
 	server.AddRouteForMethod("/hide", http.POST, hideHandler)
 
+	server.AddRouteForMethod("/2/show", http.POST, showHandler)
+	server.AddRouteForMethod("/show", http.POST, showHandler)
 	server.AddRouteForMethod("/2/show", http.GET, showHandler)
 	server.AddRouteForMethod("/show", http.GET, showHandler)
 
 	server.AddRouteForMethod("/2/passwords", http.GET, passwordsHandler)
 	server.AddRouteForMethod("/passwords", http.GET, passwordsHandler)
+}
 
+func main() {
 	server.Start()
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	mrand "math/rand"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/zerklabs/auburn/http"
 	"github.com/zerklabs/auburn/http/response"
+	"github.com/zerklabs/auburn/log"
 )
 
 // <prefix>:dictionary is a zset
@@ -31,11 +33,11 @@ func passwordsHandler(ctx context.Context, req http.HttpTransaction) response.Re
 		mrand.Seed(time.Now().UTC().UnixNano())
 		words, err := redis.Strings(cluster.Do("SRANDMEMBER", dictionaryKey, 2))
 		if err != nil {
-			http.Log.Error(err)
-			return req.Error(500, "Failed to retrieve value from Redis")
+			log.Error(err)
+			return response.Error(500, errors.New("Failed to retrieve value"))
 		}
 		if len(words) == 0 {
-			return req.Error(500, "Failed to find value in Redis list")
+			return response.Error(500, errors.New("Failed to find value in list"))
 		}
 
 		randDigit := mrand.Intn(20000)
